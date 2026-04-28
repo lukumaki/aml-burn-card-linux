@@ -57,7 +57,7 @@ Or from the Mint Menu → Utilities → Amlogic Firmware Tool
 
 ## 🚀 Usage
 
-Place your firmware '.img' files in any directory and run:
+Place your firmware `.img` files in any directory and run:
 <pre>amlogic-firmware-tool</pre>
 The tool will:
 - Ask which firmware to unpack
