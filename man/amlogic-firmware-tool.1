@@ -1,0 +1,106 @@
+.TH AMLOGIC-FIRMWARE-TOOL 1 "April 2026" "Amlogic Firmware Tool" "User Commands"
+
+.SH NAME
+amlogic_firmware_tool.sh \- Extract, inspect and process Amlogic firmware images
+
+.SH SYNOPSIS
+.B amlogic_firmware_tool.sh
+.RI [ options ] " <firmware.img>"
+
+.SH DESCRIPTION
+The Amlogic Firmware Tool provides a unified interface for unpacking,
+inspecting and processing Amlogic-based Android firmware images. It
+automatically detects partition formats, converts sparse images, and
+extracts filesystem contents for analysis or modification.
+
+The tool includes automatic dependency detection, auto-building of
+simg2img from source, and helper utilities for magic-byte validation.
+
+.SH FEATURES
+.TP
+.B Automatic sparse image conversion
+Converts Android sparse images to raw ext4 using simg2img.
+
+.TP
+.B Magic-byte detection
+Identifies partition formats (sparse, ext4, gzip, bootloader).
+
+.TP
+.B Auto-build dependencies
+Automatically compiles simg2img from source if missing.
+
+.TP
+.B Outer firmware unpacking
+Supports Amlogic outer container extraction via Python helper.
+
+.TP
+.B Clean directory structure
+Outputs extracted partitions into organized folders.
+
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Display help and usage information.
+
+.TP
+.B \-o <dir>, \-\-output <dir>
+Specify output directory for extracted partitions.
+
+.TP
+.B \-v, \-\-verbose
+Enable verbose output.
+
+.SH REQUIREMENTS
+The following system utilities must be available:
+.IP \(bu 2
+xxd
+.IP \(bu 2
+python3
+.IP \(bu 2
+gunzip
+.IP \(bu 2
+losetup
+.IP \(bu 2
+mount
+
+The tool will automatically install or build additional components such as
+simg2img and verify_magic.sh if missing.
+
+.SH FILES
+.TP
+.I /opt/aml-firmware-tool/
+Default installation directory.
+
+.TP
+.I /usr/share/applications/AmlogicFirmwareTool.desktop
+Desktop launcher entry.
+
+.TP
+.I /usr/share/icons/amlogic.png
+Application icon.
+
+.SH EXAMPLES
+.TP
+Extract a firmware image:
+.RS
+.nf
+$ amlogic_firmware_tool.sh firmware.img
+.fi
+.RE
+
+.TP
+Extract to a specific directory:
+.RS
+.nf
+$ amlogic_firmware_tool.sh -o output_dir firmware.img
+.fi
+.RE
+
+.SH AUTHOR
+Written by Frixos (lukumaki).
+
+.SH LICENSE
+Distributed under the MIT License.
+
+.SH SEE ALSO
+simg2img(1), mount(8), losetup(8)
