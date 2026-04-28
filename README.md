@@ -28,11 +28,20 @@ Designed for firmware modders, reverse engineers, and embedded Linux enthusiasts
 - **Full firmware unpacker** (outer container + partitions)
 - **Magic-byte detection** for partition type identification
 - **Sparse → ext4 conversion** (automatic)
-- **Auto-build of `simg2img`** if missing
+- **Auto-build of** `simg2img` if missing
 - **Organized output directories**
 - **Desktop launcher + icon**
 - **Makefile support** (`make install`, `make uninstall`, `make build`)
 - **Man page support** (`man amlogic-firmware-tool`)
+
+---
+
+## 📘 Documentation
+
+| Section | Description |
+|--------|-------------|
+| 📥 [Installation & Usage](docs/installation_and_usage.md) | How to install and use the burn‑card tool |
+| 🛠️ [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
 
 ---
 
