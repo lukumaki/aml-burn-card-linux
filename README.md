@@ -1,7 +1,6 @@
-## Amlogic Burn Card Linux Tool
+<h1 align="center">🔥 Amlogic Firmware Tool 🔥</h1>
 
 <p align="center">
-<!-- Badges -->
   <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/Linux%20Mint-supported-success.svg" alt="Linux Mint Support">
@@ -9,66 +8,73 @@
   <img src="https://img.shields.io/badge/Architecture-x86__64-lightgrey.svg" alt="Architecture">
 </p>
 
+<p align="center">
+  Extract • Inspect • Convert • Analyze Amlogic Android Firmware Images  
+  <br>
+  Fully automated dependency handling • Auto-build simg2img • Clean output structure
+</p>
+
 ---
 
-## A complete Linux utility for:
+## 🔍 Overview
+The **Amlogic Firmware Tool** is a Linux-native utility for unpacking, analyzing, and converting Amlogic Android firmware images.  
+It automatically detects partition formats, converts sparse images, extracts filesystem contents, and organizes everything into a clean output structure.
 
-- unpacking Amlogic firmware `.img` files  
-- extracting burn‑card bootloader files  
-- converting Android sparse images  
-- creating bootable Amlogic SD cards  
-- restoring SD cards to normal  
-- running as a real Linux application  
+Designed for firmware modders, reverse engineers, and embedded Linux enthusiasts.
 
-Supports all modern Amlogic devices (S905X, S905X2, S905X3, S922X, etc).
-
+---
 
 ## ✨ Features
+- **Full firmware unpacker** (outer container + partitions)
+- **Magic-byte detection** for partition type identification
+- **Sparse → ext4 conversion** (automatic)
+- **Auto-build of `simg2img`** if missing
+- **Organized output directories**
+- **Desktop launcher + icon**
+- **Makefile support** (`make install`, `make uninstall`, `make build`)
+- **Man page support** (`man amlogic-firmware-tool`)
 
-- **Full firmware unpacker** (outer + partitions)  
-- **Automatic detection** of `aml_sdc_burn.UBOOT` and `aml_sdc_burn.ini`  
-- **Sparse image detection** + optional conversion  
-- **Interactive device selection**  
-- **Normal / Dry‑run / Verify‑only modes**  
-- **Logging**  
-- **Desktop launcher**  
-- **Installable as a real Linux Mint application**  
-- **Restore SD card to normal mode**  
-
+---
 
 ## 📦 Dependencies
+The tool requires the following system utilities:
 
-- **Install required tools:**
-<pre>sudo apt install -y python3 parted dosfstools android-sdk-libsparse-utils gnome-terminal</pre>
+- `python3`
+- `xxd`
+- `gunzip`
+- `losetup`
+- `mount`
 
+The tool automatically builds or installs missing components when possible.
 
-## 🛠 Installation
+---
 
-- **Clone the repository:**
-<pre>git clone https://github.com/lukumaki/aml-burn-card-linux.git
-cd aml-burn-card-linux</pre>
-- **Run the installer:**
-<pre>chmod +x install.sh
-sudo ./install.sh</pre>
-- **Launch the app:**
-<pre>amlogic-firmware-tool</pre>
-Or from the Mint Menu → Utilities → Amlogic Firmware Tool
+## 📁 Directory Structure
 
+```text
+aml-burn-card-linux/
+├── amlogic_firmware_tool.sh
+├── unpack_amlogic_outer.py
+├── install.sh
+├── uninstall.sh
+├── Makefile
+├── amlogic.png
+├── tools/
+│   ├── simg2img
+│   ├── verify_magic.sh
+│   └── android-simg2img/
+├── docs/
+│   ├── installation_and_usage.txt
+│   ├── troubleshooting.md
+│   ├── architecture.md
+│   └── faq.md
+└── man/
+    └── amlogic-firmware-tool.1
+```
+---
 
-## 🚀 Usage
+## 📜 License
+This project is licensed under the **MIT License**.  
+See the `LICENSE` file for details.
 
-Place your firmware `.img` files in any directory and run:
-<pre>amlogic-firmware-tool</pre>
-The tool will:
-- Ask which firmware to unpack
-- Extract all burn files
-- Ask which SD device to use
-- Create a bootable Amlogic SD card
-
-To restore an SD card:
-<pre>amlogic-firmware-tool restore</pre>
-
-
-## 📄 License
-
-MIT License.
+---
