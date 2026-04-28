@@ -11,7 +11,7 @@
 
 ---
 
-## A complete Linux Mint utility for:
+## A complete Linux utility for:
 
 - unpacking Amlogic firmware `.img` files  
 - extracting burn‑card bootloader files  
