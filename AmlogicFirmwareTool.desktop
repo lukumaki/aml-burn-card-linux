@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Amlogic Firmware Tool
+Comment=Extract and analyze Amlogic firmware images
+Exec=/opt/aml-firmware-tool/amlogic_firmware_tool.sh
+Icon=/usr/share/icons/amlogic.png
+Terminal=true
+Type=Application
+Categories=Utility;Development;
+
