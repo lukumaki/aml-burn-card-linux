@@ -13,6 +13,109 @@ log() {
 }
 
 # ---------------------------------------------------------
+#  Dependency checks and auto-install/build helpers
+# ---------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLS_DIR="$SCRIPT_DIR/tools"
+SIMG2IMG="$TOOLS_DIR/simg2img"
+VERIFY_MAGIC="$TOOLS_DIR/verify_magic.sh"
+
+# Ensure tools directory exists
+mkdir -p "$TOOLS_DIR"
+
+# -----------------------------
+# Check for required commands
+# -----------------------------
+require_cmd() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "❌ Missing required command: $1"
+        echo "   Please install it using your package manager."
+        exit 1
+    fi
+}
+
+echo "🔍 Checking system dependencies..."
+
+require_cmd xxd
+require_cmd python3
+require_cmd gunzip
+require_cmd losetup
+require_cmd mount
+
+echo "✔ Base system dependencies OK."
+
+# ---------------------------------------------------------
+#  Auto-detect verify_magic.sh
+# ---------------------------------------------------------
+check_verify_magic() {
+    if [ -x "$VERIFY_MAGIC" ]; then
+        echo "✔ verify_magic.sh found."
+        return
+    fi
+
+    echo "⚠ verify_magic.sh missing. Creating default version..."
+
+    cat << 'EOF' > "$VERIFY_MAGIC"
+#!/usr/bin/env bash
+FILE="$1"
+if [ ! -f "$FILE" ]; then
+    echo "File not found: $FILE"
+    exit 1
+fi
+MAGIC=$(xxd -p -l 4 "$FILE")
+case "$MAGIC" in
+    27051956) echo "android-sparse" ;;
+    53ef0000|53ef) echo "ext4" ;;
+    1f8b0800) echo "gzip" ;;
+    414d4c*) echo "amlogic-bootloader" ;;
+    *) echo "unknown" ;;
+esac
+EOF
+
+    chmod +x "$VERIFY_MAGIC"
+    echo "✔ verify_magic.sh created."
+}
+
+check_verify_magic
+
+# ---------------------------------------------------------
+#  Auto-detect or build simg2img from source
+# ---------------------------------------------------------
+check_simg2img() {
+    if [ -x "$SIMG2IMG" ]; then
+        echo "✔ simg2img found."
+        return
+    fi
+
+    echo "⚠ simg2img not found. Building from source..."
+
+    sudo apt-get update
+    sudo apt-get install -y build-essential git libz-dev
+
+    cd "$TOOLS_DIR"
+
+    if [ ! -d "android-simg2img" ]; then
+        git clone https://github.com/anestisb/android-simg2img.git
+    fi
+
+    cd android-simg2img
+
+    make clean || true
+    make
+
+    cp simg2img "$SIMG2IMG"
+    chmod +x "$SIMG2IMG"
+
+    echo "✔ simg2img built and installed."
+}
+
+check_simg2img
+
+echo "🎉 All dependencies satisfied."
+echo
+
+# ---------------------------------------------------------
 # Optional: restore SD card to normal mode
 # ---------------------------------------------------------
 if [[ "${1-}" == "restore" ]]; then
