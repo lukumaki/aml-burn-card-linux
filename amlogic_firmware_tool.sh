@@ -1,292 +1,275 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOGFILE="amlogic_tool.log"
-MOUNT="/mnt/aml"
+#===========================================================
+# Amlogic Burn Card Tool (Linux)
+#===========================================================
 
-echo "=== Amlogic Firmware → Bootable SD Creator ==="
-echo "Log file: $LOGFILE"
-echo
-
-log() {
-    echo "$@" | tee -a "$LOGFILE"
-}
-
-# ---------------------------------------------------------
-#  Dependency checks and auto-install/build helpers
-# ---------------------------------------------------------
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TOOLS_DIR="$SCRIPT_DIR/tools"
-SIMG2IMG="$TOOLS_DIR/simg2img"
-VERIFY_MAGIC="$TOOLS_DIR/verify_magic.sh"
-
-# Ensure tools directory exists
-mkdir -p "$TOOLS_DIR"
-
-# -----------------------------
-# Check for required commands
-# -----------------------------
-require_cmd() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        echo "❌ Missing required command: $1"
-        echo "   Please install it using your package manager."
-        exit 1
-    fi
-}
-
-echo "🔍 Checking system dependencies..."
-
-require_cmd xxd
-require_cmd python3
-require_cmd gunzip
-require_cmd losetup
-require_cmd mount
-
-echo "✔ Base system dependencies OK."
-
-# ---------------------------------------------------------
-#  Auto-detect verify_magic.sh
-# ---------------------------------------------------------
-check_verify_magic() {
-    if [ -x "$VERIFY_MAGIC" ]; then
-        echo "✔ verify_magic.sh found."
-        return
-    fi
-
-    echo "⚠ verify_magic.sh missing. Creating default version..."
-
-    cat << 'EOF' > "$VERIFY_MAGIC"
-#!/usr/bin/env bash
-FILE="$1"
-if [ ! -f "$FILE" ]; then
-    echo "File not found: $FILE"
-    exit 1
-fi
-MAGIC=$(xxd -p -l 4 "$FILE")
-case "$MAGIC" in
-    27051956) echo "android-sparse" ;;
-    53ef0000|53ef) echo "ext4" ;;
-    1f8b0800) echo "gzip" ;;
-    414d4c*) echo "amlogic-bootloader" ;;
-    *) echo "unknown" ;;
-esac
-EOF
-
-    chmod +x "$VERIFY_MAGIC"
-    echo "✔ verify_magic.sh created."
-}
-
-check_verify_magic
-
-# ---------------------------------------------------------
-#  Auto-detect or build simg2img from source
-# ---------------------------------------------------------
-check_simg2img() {
-    if [ -x "$SIMG2IMG" ]; then
-        echo "✔ simg2img found."
-        return
-    fi
-
-    echo "⚠ simg2img not found. Building from source..."
-
-    sudo apt-get update
-    sudo apt-get install -y build-essential git libz-dev
-
-    cd "$TOOLS_DIR"
-
-    if [ ! -d "android-simg2img" ]; then
-        git clone https://github.com/anestisb/android-simg2img.git
-    fi
-
-    cd android-simg2img
-
-    make clean || true
-    make
-
-    cp simg2img "$SIMG2IMG"
-    chmod +x "$SIMG2IMG"
-
-    echo "✔ simg2img built and installed."
-}
-
-check_simg2img
-
-echo "🎉 All dependencies satisfied."
-echo
-
-# ---------------------------------------------------------
-# Optional: restore SD card to normal mode
-# ---------------------------------------------------------
-if [[ "${1-}" == "restore" ]]; then
-    log "[*] RESTORE MODE: restore SD card to normal single FAT32"
-    lsblk -o NAME,SIZE,MODEL,TYPE | tee -a "$LOGFILE"
-    echo
-    log "Select device to restore:"
-    mapfile -t DEVICES < <(lsblk -dpno NAME,TYPE | awk '$2=="disk"{print $1}')
-    select DEVICE in "${DEVICES[@]}"; do
-        [[ -n "$DEVICE" ]] && break
-    done
-    read -rp "Type YES to confirm wiping $DEVICE: " confirm
-    [[ "$confirm" != "YES" ]] && { log "Aborted."; exit 1; }
-
-    log "[1/2] Wiping beginning of device..."
-    sudo dd if=/dev/zero of="$DEVICE" bs=1M count=10 conv=fsync | tee -a "$LOGFILE"
-
-    log "[2/2] Creating single FAT32 partition..."
-    sudo parted "$DEVICE" --script mklabel msdos
-    sudo parted "$DEVICE" --script mkpart primary fat32 1MiB 100%
-    sudo mkfs.vfat -n SDCARD "${DEVICE}1"
-
-    log "Restore complete."
-    exit 0
+# Self-elevate if not root
+if [[ $EUID -ne 0 ]]; then
+    exec sudo bash "$0" "$@"
 fi
 
-# ---------------------------------------------------------
-# STEP 1 — Select firmware IMG to unpack
-# ---------------------------------------------------------
-log "[*] Scanning for firmware images..."
-mapfile -t IMGS < <(ls *.img 2>/dev/null || true)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOGFILE="$SCRIPT_DIR/amlogic_firmware_tool.log"
+VERIFY_MAGIC="$SCRIPT_DIR/tools/verify_magic.sh"
 
-if [[ ${#IMGS[@]} -eq 0 ]]; then
-    log "ERROR: No .img firmware files found."
-    exit 1
-fi
-
-log "Select firmware to unpack:"
-select FWIMG in "${IMGS[@]}"; do
-    [[ -n "$FWIMG" ]] && break
-done
-log "[+] Selected firmware: $FWIMG"
-
-# SHA256
-if command -v sha256sum >/dev/null 2>&1; then
-    log "[*] Calculating SHA256..."
-    sha256sum "$FWIMG" | tee -a "$LOGFILE"
+#-----------------------------
+# Colors (with fallback)
+#-----------------------------
+if command -v tput >/dev/null 2>&1 && [[ -n "${TERM-}" ]]; then
+    RED="$(tput setaf 1 || true)"
+    GREEN="$(tput setaf 2 || true)"
+    YELLOW="$(tput setaf 3 || true)"
+    BLUE="$(tput setaf 4 || true)"
+    BOLD="$(tput bold || true)"
+    RESET="$(tput sgr0 || true)"
 else
-    log "[!] sha256sum not found, skipping checksum."
+    RED=""; GREEN=""; YELLOW=""; BLUE=""; BOLD=""; RESET=""
 fi
 
-# Basic sanity check
-if [[ ! -s "$FWIMG" ]]; then
-    log "ERROR: Firmware file is empty or unreadable."
+#-----------------------------
+# Logging helpers
+#-----------------------------
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOGFILE"
+}
+
+fail() {
+    local msg="$*"
+    log "${RED}ERROR:${RESET} $msg"
+    if command -v zenity >/dev/null 2>&1; then
+        zenity --error --title="Amlogic Burn Card Tool" --text="$msg" 2>/dev/null || true
+    fi
     exit 1
-fi
+}
 
-OUTDIR="unpacked_${FWIMG%.img}"
-mkdir -p "$OUTDIR"
+#-----------------------------
+# Dependency checks
+#-----------------------------
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || fail "Required command '$1' not found."
+}
 
-echo
-log "[*] Unpacking firmware using Python tool..."
-python3 unpack_amlogic_outer.py "$FWIMG" "$OUTDIR" | tee -a "$LOGFILE"
+check_dependencies() {
+    require_cmd dd
+    require_cmd lsblk
+    require_cmd grep
+    require_cmd awk
+    require_cmd sed
+    require_cmd mount
+    require_cmd umount
+    require_cmd xxd
+    require_cmd sha256sum
+    require_cmd stat
 
-echo
-log "[*] Searching for burn-card files in $OUTDIR..."
+    if ! command -v zenity >/dev/null 2>&1; then
+        log "${YELLOW}Notice:${RESET} 'zenity' not found. Falling back to text-based selection."
+    fi
+}
 
-UBOOT_FILE=$(ls "$OUTDIR"/aml_sdc_burn.UBOOT 2>/dev/null || true)
-INI_FILE=$(ls "$OUTDIR"/aml_sdc_burn.ini 2>/dev/null || true)
+#-----------------------------
+# Firmware selection
+#-----------------------------
+select_firmware() {
+    local firmware="${1-}"
 
-if [[ -z "$UBOOT_FILE" || -z "$INI_FILE" ]]; then
-    log "ERROR: Burn files not found in unpacked output."
-    exit 1
-fi
+    if [[ -n "$firmware" ]]; then
+        [[ -f "$firmware" ]] || fail "Firmware file '$firmware' does not exist."
+        echo "$firmware"
+        return
+    fi
 
-log "Found:"
-log " - $UBOOT_FILE"
-log " - $INI_FILE"
+    if command -v zenity >/dev/null 2>&1; then
+        firmware="$(zenity --file-selection \
+                           --title="Select Firmware Image" \
+                           --file-filter="*.img" 2>/dev/null || true)"
+        [[ -n "$firmware" ]] || fail "No firmware selected."
+        [[ -f "$firmware" ]] || fail "Selected firmware does not exist."
+        echo "$firmware"
+        return
+    fi
 
-# ---------------------------------------------------------
-# STEP 2 — Select SD device
-# ---------------------------------------------------------
-echo
-log "[*] Detecting block devices..."
-lsblk -o NAME,SIZE,MODEL,TYPE | tee -a "$LOGFILE"
-echo
+    log "${YELLOW}Zenity not available. Using CLI selection.${RESET}"
+    read -r -p "Enter path to firmware .img file: " firmware
+    [[ -f "$firmware" ]] || fail "Firmware file does not exist."
+    echo "$firmware"
+}
 
-log "Select target device:"
-mapfile -t DEVICES < <(lsblk -dpno NAME,TYPE | awk '$2=="disk"{print $1}')
-select DEVICE in "${DEVICES[@]}"; do
-    [[ -n "$DEVICE" ]] && break
-done
-log "[+] Selected device: $DEVICE"
+#-----------------------------
+# Firmware verification (uses verify_magic.sh)
+#-----------------------------
+verify_firmware_magic() {
+    local firmware="$1"
 
-echo
-read -rp "Type YES to confirm wiping $DEVICE: " confirm
-[[ "$confirm" != "YES" ]] && { log "Aborted."; exit 1; }
+    if [[ ! -x "$VERIFY_MAGIC" ]]; then
+        fail "verify_magic.sh missing or not executable at: $VERIFY_MAGIC"
+    fi
 
-# ---------------------------------------------------------
-# STEP 3 — Mode selection
-# ---------------------------------------------------------
-echo
-log "Choose operation mode:"
-select MODE in "Normal" "Dry-run" "Verify-only"; do
-    case $MODE in
-        Normal) log "[+] Normal mode selected"; break ;;
-        Dry-run) log "[+] Dry-run mode selected"; break ;;
-        Verify-only) log "[+] Verification mode selected"; break ;;
+    local output rc
+    output="$("$VERIFY_MAGIC" "$firmware" 2>/dev/null || true)"
+    rc=$?
+
+    case "$rc" in
+        0)
+            # raw-disk-image (or allowed type)
+            log "${GREEN}Firmware type accepted:${RESET} $output"
+            return 0
+            ;;
+        2)
+            # amlogic-upgrade-package (unsupported by dd)
+            log "${RED}Unsupported firmware type:${RESET} $output"
+            if command -v zenity >/dev/null 2>&1; then
+                zenity --error --title="Amlogic Burn Card Tool" \
+                       --text="This file is an Amlogic upgrade package and cannot be written with dd.\nUse USB Burning Tool or Burn Card Maker instead." 2>/dev/null || true
+            fi
+            return 1
+            ;;
+        1|*)
+            # not-firmware or error
+            log "${RED}Invalid firmware image:${RESET} $output"
+            if command -v zenity >/dev/null 2>&1; then
+                zenity --error --title="Amlogic Burn Card Tool" \
+                       --text="The selected file does not look like a valid burn-card image.\nDetected: $output" 2>/dev/null || true
+            fi
+            return 1
+            ;;
     esac
-done
+}
 
-# ---------------------------------------------------------
-# STEP 4 — Verification-only mode
-# ---------------------------------------------------------
-if [[ "$MODE" == "Verify-only" ]]; then
-    echo
-    log "=== VERIFICATION REPORT ==="
-    log "Firmware: $FWIMG"
-    log "Unpacked directory: $OUTDIR"
-    log "Bootloader: $UBOOT_FILE"
-    log "INI file: $INI_FILE"
-    log "Target device: $DEVICE"
-    log "Partitions dir (if any): $OUTDIR/partitions"
-    log "No changes made."
-    exit 0
-fi
+#-----------------------------
+# SD card selection
+#-----------------------------
+select_sd_device() {
+    local devices
+    devices="$(lsblk -dpno NAME,SIZE,MODEL,RM | awk '$4 == 1 {print $1 " " $2 " " $3}')"
 
-# ---------------------------------------------------------
-# STEP 5 — Dry-run mode
-# ---------------------------------------------------------
-if [[ "$MODE" == "Dry-run" ]]; then
-    echo
-    log "=== DRY RUN ==="
-    log "Would wipe: $DEVICE"
-    log "Would write bootloader: $UBOOT_FILE"
-    log "Would create FAT32 partition"
-    log "Would copy:"
-    log "   - $INI_FILE"
-    log "   - $FWIMG → aml_upgrade_package.img"
-    log "No changes made."
-    exit 0
-fi
+    [[ -n "$devices" ]] || fail "No removable devices detected."
 
-# ---------------------------------------------------------
-# STEP 6 — NORMAL MODE: Create bootable SD
-# ---------------------------------------------------------
-echo
-log "[1/5] Wiping beginning of device..."
-sudo dd if=/dev/zero of="$DEVICE" bs=1M count=10 conv=fsync | tee -a "$LOGFILE"
+    if command -v zenity >/dev/null 2>&1; then
+        local list=()
+        while read -r name size model; do
+            list+=("$name" "$size $model")
+        done <<< "$devices"
 
-log "[2/5] Writing Amlogic burn bootloader..."
-sudo dd if="$UBOOT_FILE" of="$DEVICE" bs=512 seek=1 conv=fsync | tee -a "$LOGFILE"
+        local selected
+        selected="$(zenity --list \
+                           --title="Select SD Card Device" \
+                           --text="Choose the SD card to write the firmware to.\n${RED}WARNING:${RESET} This will erase all data." \
+                           --column="Device" --column="Description" \
+                           "${list[@]}" 2>/dev/null || true)"
 
-log "[3/5] Creating partition table..."
-sudo parted "$DEVICE" --script mklabel msdos
-sudo parted "$DEVICE" --script mkpart primary fat32 1MiB 100%
+        [[ -n "$selected" ]] || fail "No SD card selected."
+        echo "$selected"
+        return
+    fi
 
-log "[4/5] Formatting FAT32..."
-sudo mkfs.vfat -n AMLOGIC "${DEVICE}1"
+    log "${BLUE}Available removable devices:${RESET}"
+    echo "$devices" | nl -w2 -s": "
 
-log "[5/5] Copying files..."
-sudo mkdir -p "$MOUNT"
-sudo mount "${DEVICE}1" "$MOUNT"
+    local num
+    read -r -p "Enter the number of the SD card device: " num
+    local line
+    line="$(echo "$devices" | sed -n "${num}p" || true)"
+    [[ -n "$line" ]] || fail "Invalid selection."
 
-sudo cp "$INI_FILE" "$MOUNT/"
-sudo cp "$FWIMG" "$MOUNT/aml_upgrade_package.img"
+    echo "$line" | awk '{print $1}'
+}
 
-sync
-sudo umount "$MOUNT"
+#-----------------------------
+# Size check: image vs device
+#-----------------------------
+check_image_vs_device_size() {
+    local firmware="$1"
+    local device="$2"
 
-log "=== DONE ==="
-log "Your Amlogic recovery SD card is ready."
-log "Use the toothpick method to start flashing."
+    local img_bytes dev_bytes
+    img_bytes="$(stat -c%s "$firmware")"
 
+    if command -v blockdev >/dev/null 2>&1; then
+        dev_bytes="$(blockdev --getsize64 "$device")"
+    else
+        dev_bytes="$(lsblk -bndo SIZE "$device")"
+    fi
+
+    if [[ -z "$dev_bytes" ]]; then
+        fail "Unable to determine size of device $device."
+    fi
+
+    log "Image size:  $img_bytes bytes"
+    log "Device size: $dev_bytes bytes"
+
+    if (( img_bytes > dev_bytes )); then
+        fail "Firmware image is larger than the target device. Aborting."
+    fi
+}
+
+#-----------------------------
+# Checksum logging
+#-----------------------------
+log_firmware_checksum() {
+    local firmware="$1"
+    log "${BLUE}Calculating SHA-256 checksum of firmware...${RESET}"
+    local sum
+    sum="$(sha256sum "$firmware")"
+    log "SHA-256: $sum"
+}
+
+#-----------------------------
+# Burn card creation
+#-----------------------------
+create_burn_card() {
+    local firmware="$1"
+    local device="$2"
+
+    log "${BOLD}About to write firmware:${RESET}"
+    log "  Firmware: $firmware"
+    log "  Device:   $device"
+
+    check_image_vs_device_size "$firmware" "$device"
+
+    log "${BLUE}Ensuring '$device' is not mounted...${RESET}"
+    while read -r mnt; do
+        [[ -n "$mnt" ]] || continue
+        log "Unmounting $mnt..."
+        umount "$mnt" || fail "Failed to unmount $mnt"
+    done < <(lsblk -nrpo MOUNTPOINT "$device" | grep -v '^$' || true)
+
+    sync
+
+    log "${YELLOW}Writing firmware image to SD card...${RESET}"
+    dd if="$firmware" of="$device" bs=4M status=progress conv=fsync
+
+    sync
+    log "${GREEN}Firmware successfully written to '$device'.${RESET}"
+}
+
+#-----------------------------
+# Main
+#-----------------------------
+main() {
+    : > "$LOGFILE"
+    log "${BOLD}Starting Amlogic burn card tool...${RESET}"
+
+    check_dependencies
+
+    local firmware
+    firmware="$(select_firmware "${1-}")"
+    log "Selected firmware: $firmware"
+
+    log_firmware_checksum "$firmware"
+
+    if ! verify_firmware_magic "$firmware"; then
+        fail "Aborting: invalid or unsupported firmware image."
+    fi
+
+    local sd_device
+    sd_device="$(select_sd_device)"
+    log "Selected SD card device: $sd_device"
+
+    create_burn_card "$firmware" "$sd_device"
+
+    log "${GREEN}All done.${RESET}"
+}
+
+main "$@"
