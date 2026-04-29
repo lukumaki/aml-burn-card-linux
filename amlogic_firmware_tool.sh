@@ -106,37 +106,49 @@ verify_firmware_magic() {
         fail "verify_magic.sh missing or not executable at: $VERIFY_MAGIC"
     fi
 
+    # Capture output AND exit code
     local output rc
-    output="$("$VERIFY_MAGIC" "$firmware" 2>/dev/null || true)"
+    output="$("$VERIFY_MAGIC" "$firmware" 2>/dev/null)"
     rc=$?
 
     case "$rc" in
         0)
-            # raw-disk-image (or allowed type)
+            # raw-disk-image (valid)
             log "${GREEN}Firmware type accepted:${RESET} $output"
             return 0
             ;;
-        2)
-            # amlogic-upgrade-package (unsupported by dd)
-            log "${RED}Unsupported firmware type:${RESET} $output"
+
+        1)
+            # not-firmware (invalid)
+            log "${RED}Invalid firmware image:${RESET} $output"
             if command -v zenity >/dev/null 2>&1; then
-                zenity --error --title="Amlogic Burn Card Tool" \
-                       --text="This file is an Amlogic upgrade package and cannot be written with dd.\nUse USB Burning Tool or Burn Card Maker instead." 2>/dev/null || true
+                zenity --error --title="Invalid Firmware" \
+                       --text="The selected file is NOT a valid burn‑card image.\nDetected: $output" 2>/dev/null || true
             fi
             return 1
             ;;
-        1|*)
-            # not-firmware or error
-            log "${RED}Invalid firmware image:${RESET} $output"
+
+        2)
+            # amlogic-upgrade-package (unsupported)
+            log "${RED}Unsupported Amlogic upgrade package detected:${RESET} $output"
             if command -v zenity >/dev/null 2>&1; then
-                zenity --error --title="Amlogic Burn Card Tool" \
-                       --text="The selected file does not look like a valid burn-card image.\nDetected: $output" 2>/dev/null || true
+                zenity --error --title="Unsupported Firmware" \
+                       --text="This file is an Amlogic UPGRADE PACKAGE.\nThese cannot be written with dd.\nUse USB Burning Tool instead." 2>/dev/null || true
+            fi
+            return 1
+            ;;
+
+        *)
+            # unexpected error
+            log "${RED}Unknown firmware detection error:${RESET} $output"
+            if command -v zenity >/dev/null 2>&1; then
+                zenity --error --title="Firmware Error" \
+                       --text="Unknown error while analyzing firmware.\nDetected: $output" 2>/dev/null || true
             fi
             return 1
             ;;
     esac
 }
-
 #-----------------------------
 # SD card selection
 #-----------------------------
