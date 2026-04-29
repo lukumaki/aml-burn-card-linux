@@ -13,8 +13,16 @@ The following system utilities must be available, usually these are normally pre
 The tool will also automatically install required packages in order to build `simg2img` from source, and create `verify_magic.sh`.
 packages (`build-essential`, `git`, `libz-dev`) will also be installed when needed. No manual setup is required.  
 
+---
 
+## 📦 Getting the Source Code
 
+Before using the installer or the Makefile, you must clone the repository locally:
+```bash
+git clone https://github.com/lukumaki/aml-burn-card-linux.git
+cd aml-burn-card-linux
+```
+---
 ## 🛠️ Installation
 
 ### Method A — Using the installer (recommended)
@@ -40,8 +48,7 @@ make install
 ```
 This runs the same installer with proper permissions.
 
-
-
+---
 ## 🗑️ Uninstallation
 To remove the tool completely:
 ```
@@ -56,11 +63,9 @@ This removes:
 - `/usr/share/applications/AmlogicFirmwareTool.desktop`
 - `/usr/share/icons/amlogic.png`
 No leftover files remain.  
-
-
-
-## ⚙️ Usage
-Basic extraction
+---
+## ⚙️ What the tool does automatically
+1) Basic extraction
 ```
 amlogic_firmware_tool.sh firmware.img
 ```
@@ -71,8 +76,7 @@ This will:
 - convert sparse → ext4
 - extract filesystem contents
 - organize output into folders
-
-Specify output directory
+2) Specify output directory
 ```
 amlogic_firmware_tool.sh -o output_dir firmware.img
 ```
@@ -80,16 +84,14 @@ Verbose mode
 ```
 amlogic_firmware_tool.sh -v firmware.img
 ```  
-**What the tool does automatically / No manual intervention is required.**
+3) Overall:
 - Detects missing dependencies
 - Builds simg2img from source if needed
 - Creates verify_magic.sh if missing
 - Detects sparse/ext4/gzip/bootloader partitions
 - Extracts Amlogic outer containers
 - Organizes extracted partitions into clean folders
-
-
-
+---
 ## 💡 File Locations
 | Component | Path |
 | --- | --- |
