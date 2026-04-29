@@ -1,9 +1,8 @@
 [Desktop Entry]
 Name=Amlogic Firmware Tool
-Comment=Extract and analyze Amlogic firmware images
-Exec=gnome-terminal -- bash -c "./amlogic_firmware_tool.sh; exec bash"
+Comment=Burn Amlogic firmware images to SD cards
+Exec=gnome-terminal -- bash -c "/opt/aml-firmware-tool/amlogic_firmware_tool.sh" --wait
 Icon=/usr/share/icons/amlogic.png
 Terminal=true
 Type=Application
 Categories=Utility;Development;
-
